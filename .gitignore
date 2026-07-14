@@ -1,0 +1,27 @@
+.build/
+.swiftpm/
+.DS_Store
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.keychain-db
+
+# Locally packaged applications and build output
+*.app/
+DerivedData/
+
+# Editor state
+.idea/
+.vscode/
+xcuserdata/
