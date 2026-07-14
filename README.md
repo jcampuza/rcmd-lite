@@ -12,6 +12,22 @@ RcmdLite is a menu-bar accessory. It does not appear in the Dock or Command-Tab
 switcher. Holding Right Option for 550 milliseconds displays a non-activating
 shortcut preview in the lower-right corner.
 
+## Screenshots
+
+The settings window keeps permanent assignments pinned above temporary
+shortcuts for currently running applications.
+
+<p align="center">
+  <img src="docs/images/settings-window.png" alt="RcmdLite settings window showing pinned and temporary app shortcuts" width="760">
+</p>
+
+After holding Right Option briefly, the shortcut preview appears without taking
+focus from the current application.
+
+<p align="center">
+  <img src="docs/images/shortcut-preview.png" alt="RcmdLite shortcut preview showing assigned, temporary, and running applications" width="440">
+</p>
+
 ## Requirements
 
 - macOS 13 or newer
