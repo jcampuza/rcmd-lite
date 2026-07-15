@@ -2,6 +2,57 @@
 @preconcurrency import CoreGraphics
 import Foundation
 
+struct KeyboardModifierPolicy {
+  static let rightOptionKeyCode: CGKeyCode = 61
+
+  private static let conflictingShortcutModifiers: CGEventFlags = [
+    .maskCommand,
+    .maskControl,
+    .maskShift,
+    .maskSecondaryFn,
+  ]
+
+  private(set) var rightOptionHeld = false
+  private(set) var previewEligible = false
+
+  mutating func flagsChanged(
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> Bool? {
+    if keyCode == Self.rightOptionKeyCode {
+      rightOptionHeld = flags.contains(.maskAlternate)
+    }
+
+    let nextPreviewEligible = Self.isEligible(
+      rightOptionHeld: rightOptionHeld,
+      flags: flags
+    )
+    guard nextPreviewEligible != previewEligible else { return nil }
+
+    previewEligible = nextPreviewEligible
+    return nextPreviewEligible
+  }
+
+  func allowsAssignedLetter(flags: CGEventFlags) -> Bool {
+    Self.isEligible(rightOptionHeld: rightOptionHeld, flags: flags)
+  }
+
+  mutating func reset() -> Bool? {
+    rightOptionHeld = false
+    guard previewEligible else { return nil }
+    previewEligible = false
+    return false
+  }
+
+  private static func isEligible(
+    rightOptionHeld: Bool,
+    flags: CGEventFlags
+  ) -> Bool {
+    rightOptionHeld
+      && flags.intersection(conflictingShortcutModifiers).isEmpty
+  }
+}
+
 public final class KeyboardEventSource: @unchecked Sendable {
   public typealias Handler = @Sendable (String) -> Void
   public typealias TriggerHandler = @Sendable (Bool) -> Void
@@ -10,7 +61,7 @@ public final class KeyboardEventSource: @unchecked Sendable {
   private let triggerHandler: TriggerHandler?
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
-  private var rightOptionHeld = false
+  private var modifierPolicy = KeyboardModifierPolicy()
 
   public init(
     handler: @escaping Handler,
@@ -57,9 +108,8 @@ public final class KeyboardEventSource: @unchecked Sendable {
     }
     eventTap = nil
     runLoopSource = nil
-    if rightOptionHeld {
-      rightOptionHeld = false
-      triggerHandler?(false)
+    if let previewEligible = modifierPolicy.reset() {
+      triggerHandler?(previewEligible)
     }
   }
 
@@ -70,16 +120,21 @@ public final class KeyboardEventSource: @unchecked Sendable {
     }
 
     let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-    if type == .flagsChanged, keyCode == 61 {
-      let isHeld = event.flags.contains(.maskAlternate)
-      if isHeld != rightOptionHeld {
-        rightOptionHeld = isHeld
-        triggerHandler?(isHeld)
+    if type == .flagsChanged {
+      if let previewEligible = modifierPolicy.flagsChanged(
+        keyCode: keyCode,
+        flags: event.flags
+      ) {
+        triggerHandler?(previewEligible)
       }
       return Unmanaged.passUnretained(event)
     }
 
-    guard type == .keyDown, rightOptionHeld, let key = letter(from: event) else {
+    guard
+      type == .keyDown,
+      modifierPolicy.allowsAssignedLetter(flags: event.flags),
+      let key = letter(from: event)
+    else {
       return Unmanaged.passUnretained(event)
     }
     handler(key)
