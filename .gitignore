@@ -19,6 +19,7 @@
 
 # Locally packaged applications and build output
 *.app/
+dist/
 DerivedData/
 
 # Editor state

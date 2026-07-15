@@ -34,6 +34,23 @@ focus from the current application.
 - Swift 6.2 and the macOS SDK (install Xcode or the Xcode Command Line Tools)
 - Accessibility and Input Monitoring permission for the packaged application
 
+## Download
+
+ARM-based Mac builds are available from
+[GitHub Releases](https://github.com/jcampuza/rcmd-lite/releases/latest).
+Download the release ZIP, extract `RcmdLite.app`, and move it to
+`/Applications`.
+
+Release builds are currently ad-hoc signed rather than Apple-notarized. On the
+first launch, macOS will block the app because it is from an unidentified
+developer. After attempting to open it, go to **System Settings → Privacy &
+Security** and choose **Open Anyway**.
+
+Grant the downloaded app access under **Privacy & Security → Accessibility**
+and **Input Monitoring**, then restart it. Because releases do not yet use a
+stable Apple Developer ID signature, a future downloaded version may require
+those permissions to be granted again.
+
 The project uses Swift Package Manager and does not require an Xcode project or
 third-party dependencies.
 
@@ -131,6 +148,20 @@ echo '{"assignment":{"app":{"bundleIdentifier":"com.google.Chrome","name":"Chrom
 
 See [Architecture](docs/architecture.md) for target boundaries and the planned
 packaged end-to-end test transport.
+
+## Creating a release
+
+Push a semantic version tag to build and publish an ARM-only GitHub Release:
+
+```sh
+VERSION=0.1.1
+git tag "v$VERSION"
+git push origin "v$VERSION"
+```
+
+The release workflow validates the source, creates an ad-hoc-signed app bundle,
+checks its signature and version metadata, packages it with `ditto`, generates
+a SHA-256 checksum, and attaches both files to the GitHub Release.
 
 ## Privacy
 
