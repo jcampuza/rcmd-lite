@@ -56,28 +56,42 @@ struct KeyboardModifierPolicy {
 public final class KeyboardEventSource: @unchecked Sendable {
   public typealias Handler = @Sendable (String) -> Void
   public typealias TriggerHandler = @Sendable (Bool) -> Void
+  public typealias SecureInputHandler = @Sendable (Bool) -> Void
 
   private let handler: Handler
   private let triggerHandler: TriggerHandler?
+  private let secureInputHandler: SecureInputHandler?
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var modifierPolicy = KeyboardModifierPolicy()
+  private var secureInputBlocked = false
 
   public init(
     handler: @escaping Handler,
-    triggerHandler: TriggerHandler? = nil
+    triggerHandler: TriggerHandler? = nil,
+    secureInputHandler: SecureInputHandler? = nil
   ) {
     self.handler = handler
     self.triggerHandler = triggerHandler
+    self.secureInputHandler = secureInputHandler
   }
 
   deinit {
     stop()
   }
 
+  public var isEnabled: Bool {
+    eventTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false
+  }
+
   @discardableResult
   public func start() -> Bool {
-    guard eventTap == nil else { return true }
+    if let eventTap {
+      if CGEvent.tapIsEnabled(tap: eventTap) { return true }
+      CGEvent.tapEnable(tap: eventTap, enable: true)
+      if CGEvent.tapIsEnabled(tap: eventTap) { return true }
+      stop()
+    }
     let mask = CGEventMask(
       (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
     )
@@ -108,6 +122,7 @@ public final class KeyboardEventSource: @unchecked Sendable {
     }
     eventTap = nil
     runLoopSource = nil
+    setSecureInputBlocked(false)
     if let previewEligible = modifierPolicy.reset() {
       triggerHandler?(previewEligible)
     }
@@ -115,11 +130,23 @@ public final class KeyboardEventSource: @unchecked Sendable {
 
   private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+      if let previewEligible = modifierPolicy.reset() {
+        triggerHandler?(previewEligible)
+      }
       if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
       return Unmanaged.passUnretained(event)
     }
 
     let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+    if SecureInputStatus.isEnabled {
+      setSecureInputBlocked(true)
+      if let previewEligible = modifierPolicy.reset() {
+        triggerHandler?(previewEligible)
+      }
+      return Unmanaged.passUnretained(event)
+    }
+    setSecureInputBlocked(false)
+
     if type == .flagsChanged {
       if let previewEligible = modifierPolicy.flagsChanged(
         keyCode: keyCode,
@@ -139,6 +166,12 @@ public final class KeyboardEventSource: @unchecked Sendable {
     }
     handler(key)
     return nil
+  }
+
+  private func setSecureInputBlocked(_ blocked: Bool) {
+    guard blocked != secureInputBlocked else { return }
+    secureInputBlocked = blocked
+    secureInputHandler?(blocked)
   }
 
   private func letter(from event: CGEvent) -> String? {

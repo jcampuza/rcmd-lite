@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import Foundation
 
 private enum PrivacySettingsPane {
@@ -48,5 +49,14 @@ public enum InputMonitoringStatus {
   @discardableResult
   public static func openSystemSettings() -> Bool {
     PrivacySettingsPane.open(PrivacySettingsPane.inputMonitoring)
+  }
+}
+
+public enum SecureInputStatus {
+  /// Secure Event Input is enabled by password fields and features such as
+  /// Terminal's Secure Keyboard Entry. While it is active, macOS intentionally
+  /// keeps key events away from global keyboard monitors and event taps.
+  public static var isEnabled: Bool {
+    IsSecureEventInputEnabled()
   }
 }
