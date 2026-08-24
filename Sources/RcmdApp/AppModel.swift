@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
   private let previewOverlay = PreviewOverlayController()
   private var cancellables = Set<AnyCancellable>()
   private var keyboard: KeyboardEventSource?
+  private var secureInputBlocked = false
 
   init() {
     workspace.$runningApps
@@ -61,10 +62,32 @@ final class AppModel: ObservableObject {
         Task { @MainActor in
           self?.previewOverlay.triggerChanged(isHeld: isHeld)
         }
+      },
+      secureInputHandler: { [weak self] blocked in
+        Task { @MainActor in
+          self?.secureInputChanged(blocked: blocked)
+        }
       }
     )
 
     NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+      .sink { [weak self] _ in
+        self?.refreshPermissions()
+      }
+      .store(in: &cancellables)
+
+    let workspaceNotifications = NSWorkspace.shared.notificationCenter
+    Publishers.Merge(
+      workspaceNotifications.publisher(for: NSWorkspace.didWakeNotification),
+      workspaceNotifications.publisher(for: NSWorkspace.sessionDidBecomeActiveNotification)
+    )
+    .sink { [weak self] _ in
+      self?.restartKeyboardIfAuthorized()
+    }
+    .store(in: &cancellables)
+
+    Timer.publish(every: 5, on: .main, in: .common)
+      .autoconnect()
       .sink { [weak self] _ in
         self?.refreshPermissions()
       }
@@ -161,20 +184,52 @@ final class AppModel: ObservableObject {
   }
 
   func refreshPermissions() {
+    let wasFullyAuthorized = accessibilityTrusted && inputMonitoringTrusted
     accessibilityTrusted = AccessibilityStatus.isTrusted
     inputMonitoringTrusted = InputMonitoringStatus.isTrusted
+    let isFullyAuthorized = accessibilityTrusted && inputMonitoringTrusted
+    if !isFullyAuthorized || !wasFullyAuthorized {
+      // Recreate the tap so macOS cannot leave it with a key-down event bit
+      // that was removed when the tap was first created without permission.
+      keyboard?.stop()
+    }
     startKeyboardIfAuthorized()
   }
 
   private func startKeyboardIfAuthorized() {
+    guard accessibilityTrusted else {
+      lastMessage = "Grant Accessibility, then relaunch RcmdLite"
+      return
+    }
     guard inputMonitoringTrusted else {
       lastMessage = "Grant Input Monitoring, then relaunch RcmdLite"
       return
     }
+    let wasEnabled = keyboard?.isEnabled == true
     if keyboard?.start() == true {
-      lastMessage = "Listening for Right Option + letter"
+      if !wasEnabled && !secureInputBlocked {
+        lastMessage = "Listening for Right Option + letter"
+      }
     } else {
       lastMessage = "Keyboard event tap failed; relaunch after granting permissions"
+    }
+  }
+
+  private func restartKeyboardIfAuthorized() {
+    accessibilityTrusted = AccessibilityStatus.isTrusted
+    inputMonitoringTrusted = InputMonitoringStatus.isTrusted
+    keyboard?.stop()
+    startKeyboardIfAuthorized()
+  }
+
+  private func secureInputChanged(blocked: Bool) {
+    secureInputBlocked = blocked
+    if blocked {
+      previewOverlay.triggerChanged(isHeld: false)
+      lastMessage =
+        "Shortcut paused by Secure Keyboard Entry — leave the password field or close the app using it"
+    } else if accessibilityTrusted && inputMonitoringTrusted {
+      lastMessage = "Listening for Right Option + letter"
     }
   }
 }

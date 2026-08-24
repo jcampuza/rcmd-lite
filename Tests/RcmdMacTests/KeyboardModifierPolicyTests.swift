@@ -125,3 +125,16 @@ func conflictingShortcutModifierPassesAssignedLetterThrough(conflictingFlag: CGE
   )
   #expect(policy.previewEligible)
 }
+
+@Test func resetClearsHeldModifierAndPreviewState() {
+  var policy = KeyboardModifierPolicy()
+  _ = policy.flagsChanged(
+    keyCode: KeyboardModifierPolicy.rightOptionKeyCode,
+    flags: [.maskAlternate]
+  )
+
+  #expect(policy.reset() == false)
+  #expect(!policy.rightOptionHeld)
+  #expect(!policy.previewEligible)
+  #expect(!policy.allowsAssignedLetter(flags: [.maskAlternate]))
+}
